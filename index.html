@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSFZTI - Sàn Giao Dịch (HTML)</title>
+<style>
+  :root{
+    --bg:#121212; --border:#2a2a2a; --head:#1e1e1e;
+    --muted:#888; --green:#00e676; --red:#ff5252; --yellow:#ffd600;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);color:#fff;overflow:hidden;
+    font-family:Arial,"Segoe UI",sans-serif;font-size:12px;
+  }
+  .app{
+    height:100vh;padding:6px;gap:6px;display:grid;
+    grid-template-rows:auto minmax(0,1fr) 260px;
+  }
+  .group{
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    border:1px solid var(--border);border-radius:4px;background:var(--bg);
+  }
+  .group-title{
+    padding:4px 8px 3px;font-weight:bold;font-size:11px;
+    color:var(--muted);letter-spacing:.4px;white-space:nowrap;
+  }
+  .group-body{flex:1;min-height:0;min-width:0;padding:0 6px 6px;display:flex;flex-direction:column}
+  .group-body.no-pad{padding:0}
+  .scroll{overflow:auto}
+
+  .acc-body{
+    flex-direction:row;justify-content:space-between;align-items:center;
+    padding:0 10px 7px;gap:12px;flex-wrap:wrap;
+  }
+  #lblBalance{font-size:12px}
+  #lblPnl{font-size:12px;font-weight:bold}
+
+  .center{
+    display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
+    gap:6px;min-height:0;
+  }
+  .charts{display:grid;grid-template-rows:1fr 1fr;gap:6px;min-height:0}
+  .line-title{color:#29b6f6}
+  .candle-title{color:#ffb74d}
+  .pending-title{color:#ffd600}
+
+  .bottom{
+    display:grid;
+    grid-template-columns:1.2fr 1fr 1fr;
+    gap:6px;min-height:0;
+  }
+  .left-col{display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px;min-height:0}
+
+  table{width:100%;border-collapse:collapse;font-size:11px;font-family:inherit}
+  th{
+    position:sticky;top:0;z-index:1;
+    background:var(--head);color:var(--muted);font-weight:bold;
+    padding:3px 4px;border:1px solid #222;white-space:nowrap;text-align:center;
+  }
+  td{
+    padding:2px 4px;border:1px solid #1c1c1c;text-align:center;
+    white-space:nowrap;
+  }
+  tbody tr{cursor:default}
+  tbody tr:hover{background:#1a1a1a}
+  tbody tr.selected{background:#16242c}
+  #stockTable{min-width:730px}
+
+  .canvas-wrap{position:relative;width:100%;height:100%;min-height:0}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  .tip{
+    position:absolute;display:none;pointer-events:none;z-index:5;
+    background:rgba(18,18,18,.94);border:1px solid #333;border-radius:3px;
+    padding:4px 7px;font-size:11px;line-height:1.45;white-space:nowrap;
+    color:#ddd;
+  }
+
+  .trade-body{
+    flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;
+    padding:0 8px 8px;
+  }
+  .trade-body label{color:#aaa;font-size:11px}
+  input{
+    background:#1e1e1e;border:1px solid #333;color:#fff;
+    padding:4px 6px;border-radius:3px;width:76px;
+    font-family:inherit;font-size:12px;
+  }
+  input:focus{outline:1px solid #29b6f6}
+  button{
+    border:none;border-radius:3px;color:#fff;font-weight:bold;
+    padding:5px 10px;cursor:pointer;font-family:inherit;font-size:11.5px;
+  }
+  .btn-buy{background:#00c853}
+  .btn-buy:hover{background:#00e05e}
+  .btn-sell{background:#d50000}
+  .btn-sell:hover{background:#f00}
+  .btn-buy-mp{background:#00897b}
+  .btn-buy-mp:hover{background:#00a893}
+  .btn-sell-mp{background:#b71c1c}
+  .btn-sell-mp:hover{background:#d32f2f}
+
+  .btn-cancel{
+    background:#444;color:#fff;font-size:10.5px;
+    padding:2px 8px;border-radius:3px;font-weight:bold;
+  }
+  .btn-cancel:hover{background:#666}
+
+  .toast{
+    position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);
+    background:#d50000;color:#fff;padding:9px 18px;border-radius:4px;
+    font-size:12.5px;font-weight:bold;z-index:9999;
+    box-shadow:0 4px 14px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;transition:opacity .22s, transform .22s;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{background:#00897b}
+
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:#151515}
+  ::-webkit-scrollbar-thumb{background:#333;border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:#444}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <section class="group">
+    <div class="group-title">THÔNG TIN TÀI KHOẢN &amp; DÒNG TIỀN</div>
+    <div class="group-body acc-body">
+      <span id="lblBalance"></span>
+      <span id="lblPnl"></span>
+    </div>
+  </section>
+
+  <section class="center">
+    <div class="group">
+      <div class="group-title">BẢNG GIÁ TRỰC TUYẾN</div>
+      <div class="group-body no-pad scroll">
+        <table id="stockTable">
+          <thead>
+            <tr>
+              <th>Mã CK</th><th>Trần</th><th>Sàn</th><th>TC</th>
+              <th>Giá Mua</th><th>KL Mua</th><th>Khớp Lệnh</th>
+              <th>+/-</th><th>%</th>
+              <th>Giá Bán</th><th>KL Bán</th><th>Tổng KL</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="group">
+        <div class="group-title line-title" id="titleLine">LINE GRAPH: SSI</div>
+        <div class="group-body no-pad">
+          <div class="canvas-wrap">
+            <canvas id="lineCanvas"></canvas>
+            <div class="tip" id="tipLine"></div>
+          </div>
+        </div>
+      </div>
+      <div class="group">
+        <div class="group-title candle-title" id="titleCandle">CANDLESTICK GRAPH: SSI</div>
+        <div class="group-body no-pad">
+          <div class="canvas-wrap">
+            <canvas id="candleCanvas"></canvas>
+            <div class="tip" id="tipCandle"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bottom">
+
+    <div class="left-col">
+      <div class="group">
+        <div class="group-title">ĐẶT LỆNH (MUA/BÁN = lệnh chờ khớp — MP = khớp ngay)</div>
+        <div class="group-body trade-body">
+          <label>Mã:</label><input id="inputCode" value="SSI">
+          <label>KL:</label><input id="inputQty" value="1000">
+          <label>Giá:</label><input id="inputPrice" value="35.0">
+          <button class="btn-buy" id="btnBuy" title="Đặt lệnh chờ MUA tại giá bạn nhập">MUA</button>
+          <button class="btn-sell" id="btnSell" title="Đặt lệnh chờ BÁN tại giá bạn nhập">BÁN</button>
+          <button class="btn-buy-mp" id="btnBuyMP" title="Mua khớp ngay tại giá thị trường">MUA MP</button>
+          <button class="btn-sell-mp" id="btnSellMP" title="Bán khớp ngay tại giá thị trường">BÁN MP</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">DANH MỤC ĐẦU TƯ</div>
+        <div class="group-body no-pad scroll">
+          <table id="portfolioTable">
+            <thead>
+              <tr>
+                <th>Mã CK</th><th>SL Nắm</th><th>Giá Mua</th>
+                <th>Giá Hiện Tại</th><th>Lãi / Lỗ</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title pending-title">LỆNH CHỜ KHỚP</div>
+      <div class="group-body no-pad scroll">
+        <table id="pendingTable">
+          <thead>
+            <tr>
+              <th>TG</th><th>Loại</th><th>Mã</th><th>SL</th>
+              <th>Giá Đặt</th><th>Thông Tin</th><th>Hủy</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">LỊCH SỬ GIAO DỊCH REALTIME</div>
+      <div class="group-body no-pad scroll">
+        <table id="historyTable">
+          <thead>
+            <tr>
+              <th>Thời Gian</th><th>Loại</th><th>Mã CK</th>
+              <th>SL</th><th>Giá Khớp</th><th>Tổng Tiền</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  const INITIAL_BALANCE = 500000000;
+  const C = { green: '#00e676', red: '#ff5252', yellow: '#ffd600' };
+  const PAD = { l: 56, r: 14, t: 12, b: 22 };
+
+  const r2       = v => Math.round(v * 100) / 100;
+  const randInt  = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+  const pick     = arr => arr[Math.floor(Math.random() * arr.length)];
+  const fmtInt   = n => Math.round(n).toLocaleString('en-US');
+  const hexA     = (hex, a) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  /* ================= DỮ LIỆU ================= */
+  const STOCK_DEFS = [
+    ['SSI', 35.0], ['VIC', 45.0], ['HPG', 28.0], ['FPT', 130.0], ['VNM', 68.0],
+    ['TCB', 23.5], ['MWG', 42.0], ['MBB', 21.0], ['MSN', 65.0],  ['VHM', 40.0],
+    ['ACB', 24.0], ['STB', 30.0], ['BID', 48.0], ['VPB', 19.0],  ['GAS', 75.0]
+  ];
+
+  const stocks = {};
+  const codes  = [];
+  STOCK_DEFS.forEach(([code, ref]) => {
+    codes.push(code);
+    stocks[code] = {
+      ref,
+      ceil:  r2(ref * 1.07),
+      floor: r2(ref * 0.93),
+      price: ref,
+      vol:   randInt(500000, 3000000),
+      history: new Array(60).fill(ref),
+      candles: Array.from({ length: 60 }, () => [ref, ref, ref, ref])
+    };
+  });
+
+  let balance         = INITIAL_BALANCE;
+  const portfolio     = {};
+  // Pending order structure:
+  //   MUA: { id, type:'MUA', code, qty, price, reserved (VNĐ đã phong tỏa), time }
+  //   BÁN: { id, type:'BÁN', code, qty, price, costBasis (giá vốn gốc), time }
+  const pendingOrders = [];
+  let nextOrderId     = 1;
+  let selectedStock   = 'SSI';
+
+  /* ================= DOM ================= */
+  const $ = s => document.querySelector(s);
+
+  const lblBalance  = $('#lblBalance');
+  const lblPnl      = $('#lblPnl');
+  const titleLine   = $('#titleLine');
+  const titleCandle = $('#titleCandle');
+
+  const inputCode   = $('#inputCode');
+  const inputQty    = $('#inputQty');
+  const inputPrice  = $('#inputPrice');
+
+  const stockTbody     = $('#stockTable tbody');
+  const portfolioTbody = $('#portfolioTable tbody');
+  const pendingTbody   = $('#pendingTable tbody');
+  const historyTbody   = $('#historyTable tbody');
+
+  const lineCanvas   = $('#lineCanvas');
+  const candleCanvas = $('#candleCanvas');
+  const tipLine      = $('#tipLine');
+  const tipCandle    = $('#tipCandle');
+
+  const toastEl = $('#toast');
+
+  const rowRefs = {};
+  const hoverLine   = { idx: null };
+  const hoverCandle = { idx: null };
+
+  /* ================= TOAST ================= */
+  let toastTimer = null;
+  function showToast(msg, ok) {
+    toastEl.textContent = msg;
+    toastEl.classList.toggle('ok', !!ok);
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  }
+
+  /* ================= HELPERS ================= */
+  function addToPortfolio(code, qty, price) {
+    const cur = portfolio[code] || { qty: 0, avg_price: 0 };
+    const newQty = cur.qty + qty;
+    const newAvg = ((cur.qty * cur.avg_price) + (qty * price)) / newQty;
+    portfolio[code] = { qty: newQty, avg_price: newAvg };
+  }
+
+  function totalReservedMoney() {
+    let s = 0;
+    for (const o of pendingOrders) if (o.type === 'MUA') s += o.reserved;
+    return s;
+  }
+
+  function reservedSharesValue() {
+    // Giá trị cổ phiếu đang bị giữ cho các lệnh chờ BÁN (vẫn thuộc tài khoản)
+    let v = 0;
+    for (const o of pendingOrders) {
+      if (o.type === 'BÁN') v += o.qty * stocks[o.code].price * 1000;
+    }
+    return v;
+  }
+
+  /* ================= BẢNG GIÁ ================= */
+  function initTable() {
+    codes.forEach(code => {
+      const tr = document.createElement('tr');
+      tr.dataset.code = code;
+      for (let i = 0; i < 12; i++) tr.appendChild(document.createElement('td'));
+      tr.cells[0].textContent = code;
+      tr.cells[0].style.fontWeight = 'bold';
+      tr.cells[0].style.color = '#4fc3f7';
+      tr.addEventListener('click', () => selectStock(code));
+      stockTbody.appendChild(tr);
+      rowRefs[code] = tr;
+    });
+    rowRefs[selectedStock].classList.add('selected');
+  }
+
+  function renderTable() {
+    codes.forEach(code => {
+      const d = stocks[code];
+      const cells = rowRefs[code].cells;
+
+      const chg   = r2(d.price - d.ref);
+      const pct   = r2((chg / d.ref) * 100);
+      const color = d.price > d.ref ? C.green
+                  : d.price < d.ref ? C.red
+                  : C.yellow;
+
+      const bPrice = r2(Math.max(d.floor, d.price - 0.05));
+      const sPrice = r2(Math.min(d.ceil,  d.price + 0.05));
+
+      cells[1].textContent  = d.ceil.toFixed(2);
+      cells[2].textContent  = d.floor.toFixed(2);
+      cells[3].textContent  = d.ref.toFixed(2);
+      cells[4].textContent  = bPrice.toFixed(2);
+      cells[5].textContent  = fmtInt(randInt(10, 200) * 100);
+      cells[6].textContent  = d.price.toFixed(2);
+      cells[6].style.color  = color;
+      cells[7].textContent  = (chg >= 0 ? '+' : '') + chg.toFixed(2);
+      cells[7].style.color  = color;
+      cells[8].textContent  = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+      cells[8].style.color  = color;
+      cells[9].textContent  = sPrice.toFixed(2);
+      cells[10].textContent = fmtInt(randInt(10, 200) * 100);
+      cells[11].textContent = fmtInt(d.vol);
+    });
+  }
+
+  function selectStock(code) {
+    selectedStock = code;
+    Object.values(rowRefs).forEach(tr =>
+      tr.classList.toggle('selected', tr.dataset.code === code)
+    );
+    titleLine.textContent   = 'LINE GRAPH: ' + code;
+    titleCandle.textContent = 'CANDLESTICK GRAPH: ' + code;
+    inputCode.value  = code;
+    inputPrice.value = stocks[code].price.toFixed(2);
+    hoverLine.idx = null;
+    hoverCandle.idx = null;
+    hideTip(tipLine);
+    hideTip(tipCandle);
+    drawLineChart();
+    drawCandleChart();
+  }
+
+  /* ================= THỊ TRƯỜNG ================= */
+  function updateMarket() {
+    codes.forEach(code => {
+      const s = stocks[code];
+      const delta = pick([-0.15, -0.05, 0.0, 0.05, 0.15]);
+      const openP = s.price;
+      const newP  = r2(Math.max(s.floor, Math.min(s.ceil, openP + delta)));
+      s.price = newP;
+      s.vol  += randInt(10, 500);
+
+      s.history.push(newP);
+      if (s.history.length > 60) s.history.shift();
+
+      const highP = Math.max(openP, newP);
+      const lowP  = Math.min(openP, newP);
+      s.candles.push([openP, highP, lowP, newP]);
+      if (s.candles.length > 60) s.candles.shift();
+    });
+
+    renderTable();
+    checkPendingOrders();
+    drawLineChart();
+    drawCandleChart();
+    updateAccountInfo();
+  }
+
+  /* ================= TÀI KHOẢN ================= */
+  function updateAccountInfo() {
+    let stockVal = 0;
+    for (const code in portfolio) {
+      stockVal += portfolio[code].qty * stocks[code].price * 1000;
+    }
+    // Cổ phiếu đang bị giữ cho lệnh chờ BÁN vẫn thuộc tài khoản
+    stockVal += reservedSharesValue();
+
+    const reserved = totalReservedMoney();
+    const total    = balance + reserved + stockVal;
+    const pnl      = total - INITIAL_BALANCE;
+    const pnlPct   = (pnl / INITIAL_BALANCE) * 100;
+    const sign     = pnl >= 0 ? '+' : '';
+
+    let cashText = `Tiền tài khoản khả dụng: ${fmtInt(balance)} VNĐ`;
+    if (reserved > 0) cashText += `  |  Phong tỏa: ${fmtInt(reserved)} VNĐ`;
+    cashText += `  |  Tổng tài sản: ${fmtInt(total)} VNĐ`;
+    lblBalance.textContent = cashText;
+
+    lblPnl.textContent =
+      `Lời / Lỗ: ${sign}${fmtInt(pnl)} VNĐ (${sign}${pnlPct.toFixed(2)}%)`;
+    lblPnl.style.color = pnl >= 0 ? C.green : C.red;
+
+    // ---- Portfolio table ----
+    portfolioTbody.innerHTML = '';
+    for (const code in portfolio) {
+      const info = portfolio[code];
+      const cur  = stocks[code].price;
+      const p    = (cur - info.avg_price) * info.qty * 1000;
+      const pPct = ((cur - info.avg_price) / info.avg_price) * 100;
+      const pColor = p >= 0 ? C.green : C.red;
+      const pSign  = p >= 0 ? '+' : '';
+
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td style="font-weight:bold;color:#4fc3f7">${code}</td>` +
+        `<td>${fmtInt(info.qty)}</td>` +
+        `<td style="color:#ffd600">${info.avg_price.toFixed(2)}</td>` +
+        `<td>${cur.toFixed(2)}</td>` +
+        `<td style="color:${pColor};font-weight:bold">${pSign}${fmtInt(p)}<br><span style="font-size:10px">(${pSign}${pPct.toFixed(2)}%)</span></td>`;
+      portfolioTbody.appendChild(tr);
+    }
+  }
+
+  /* ================= LỊCH SỬ ================= */
+  function tradeColor(type) {
+    switch (type) {
+      case 'MUA':      return C.green;
+      case 'BÁN':      return C.red;
+      case 'CHỜ MUA':  return '#81c784';
+      case 'CHỜ BÁN':  return '#ef9a9a';
+      case 'HỦY MUA':
+      case 'HỦY BÁN':  return '#888';
+      default:         return '#fff';
+    }
+  }
+
+  function logTrade(type, code, qty, price) {
+    const now   = new Date().toTimeString().slice(0, 8);
+    const total = qty * price * 1000;
+    const color = tradeColor(type);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${now}</td>` +
+      `<td style="color:${color};font-weight:bold">${type}</td>` +
+      `<td style="font-weight:bold">${code}</td>` +
+      `<td>${fmtInt(qty)}</td>` +
+      `<td>${price.toFixed(2)}</td>` +
+      `<td>${fmtInt(total)}</td>`;
+
+    historyTbody.insertBefore(tr, historyTbody.firstChild);
+    while (historyTbody.children.length > 100) {
+      historyTbody.removeChild(historyTbody.lastChild);
+    }
+  }
+
+  /* ================= LỆNH CHỜ ================= */
+  function renderPendingOrders() {
+    pendingTbody.innerHTML = '';
+    pendingOrders.forEach(o => {
+      const color = o.type === 'MUA' ? '#81c784' : '#ef9a9a';
+
+      // Cột "Thông Tin": MUA -> số tiền đã phong tỏa; BÁN -> giá vốn
+      let info;
+      if (o.type === 'MUA') {
+        info = `<span style="color:#ffb74d">Tiền: ${fmtInt(o.reserved)}</span>`;
+      } else {
+        info = `<span style="color:#ffd600">Giá mua: ${o.costBasis.toFixed(2)}</span>`;
+      }
+
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${o.time}</td>` +
+        `<td style="color:${color};font-weight:bold">${o.type}</td>` +
+        `<td style="font-weight:bold;color:#4fc3f7">${o.code}</td>` +
+        `<td>${fmtInt(o.qty)}</td>` +
+        `<td style="color:#ffd600;font-weight:bold">${o.price.toFixed(2)}</td>` +
+        `<td>${info}</td>` +
+        `<td><button class="btn-cancel" data-cancel-id="${o.id}">HỦY</button></td>`;
+      pendingTbody.appendChild(tr);
+    });
+  }
+
+  /* ================= ĐỌC LỆNH ================= */
+  function readOrder() {
+    const code  = inputCode.value.trim().toUpperCase();
+    const qty   = parseInt(inputQty.value, 10);
+    const price = parseFloat(inputPrice.value);
+    if (!stocks[code]) { showToast('Mã cổ phiếu không hợp lệ: ' + code); return null; }
+    if (!Number.isFinite(qty) || qty <= 0) { showToast('Khối lượng không hợp lệ!'); return null; }
+    if (!Number.isFinite(price) || price <= 0) { showToast('Giá không hợp lệ!'); return null; }
+    if (price < stocks[code].floor || price > stocks[code].ceil) {
+      showToast(`Giá phải nằm trong [Sàn ${stocks[code].floor.toFixed(2)} - Trần ${stocks[code].ceil.toFixed(2)}]`);
+      return null;
+    }
+    return { code, qty, price };
+  }
+
+  function readMarketOrder() {
+    const code = inputCode.value.trim().toUpperCase();
+    const qty  = parseInt(inputQty.value, 10);
+    if (!stocks[code]) { showToast('Mã cổ phiếu không hợp lệ: ' + code); return null; }
+    if (!Number.isFinite(qty) || qty <= 0) { showToast('Khối lượng không hợp lệ!'); return null; }
+    return { code, qty };
+  }
+
+  /* ================= MUA (LỆNH CHỜ) ================= */
+  function buyStock() {
+    const o = readOrder();
+    if (!o) return;
+
+    // Lệnh MUA luôn là lệnh chờ khớp theo đúng giá đã nhập
+    const reserve = o.qty * o.price * 1000;
+    if (reserve > balance) { showToast('Không đủ tiền để đặt lệnh!'); return; }
+
+    balance -= reserve;   // phong tỏa tiền ngay
+    pendingOrders.push({
+      id: nextOrderId++,
+      type: 'MUA',
+      code: o.code,
+      qty: o.qty,
+      price: o.price,
+      reserved: reserve,
+      time: new Date().toTimeString().slice(0, 8)
+    });
+
+    logTrade('CHỜ MUA', o.code, o.qty, o.price);
+    showToast(`Đã đặt lệnh CHỜ MUA ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — phong tỏa ${fmtInt(reserve)} VNĐ`, true);
+    renderPendingOrders();
+    updateAccountInfo();
+  }
+
+  /* ================= BÁN (LỆNH CHỜ) ================= */
+  function sellStock() {
+    const o = readOrder();
+    if (!o) return;
+
+    const held = portfolio[o.code];
+    if (!held || held.qty < o.qty) { showToast('Không đủ cổ phiếu để đặt lệnh!'); return; }
+
+    const costBasis = held.avg_price;   // lưu lại giá vốn để hoàn trả nếu hủy
+
+    // Trừ cổ phiếu ngay khỏi danh mục (đã bị giữ cho lệnh chờ bán)
+    held.qty -= o.qty;
+    if (held.qty === 0) delete portfolio[o.code];
+
+    pendingOrders.push({
+      id: nextOrderId++,
+      type: 'BÁN',
+      code: o.code,
+      qty: o.qty,
+      price: o.price,
+      costBasis: costBasis,
+      time: new Date().toTimeString().slice(0, 8)
+    });
+
+    logTrade('CHỜ BÁN', o.code, o.qty, o.price);
+    showToast(`Đã đặt lệnh CHỜ BÁN ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — giữ ${fmtInt(o.qty)} CP (giá vốn ${costBasis.toFixed(2)})`, true);
+    renderPendingOrders();
+    updateAccountInfo();
+  }
+
+  /* ================= HỦY LỆNH CHỜ ================= */
+  function cancelPendingOrder(id) {
+    const idx = pendingOrders.findIndex(o => o.id === id);
+    if (idx < 0) return;
+    const o = pendingOrders[idx];
+
+    if (o.type === 'MUA') {
+      // Hoàn tiền phong tỏa
+      balance += o.reserved;
+      logTrade('HỦY MUA', o.code, o.qty, o.price);
+      showToast(`Đã hủy lệnh CHỜ MUA — hoàn trả ${fmtInt(o.reserved)} VNĐ`, true);
+    } else {
+      // Hoàn trả cổ phiếu theo đúng giá vốn ban đầu
+      addToPortfolio(o.code, o.qty, o.costBasis);
+      logTrade('HỦY BÁN', o.code, o.qty, o.price);
+      showToast(`Đã hủy lệnh CHỜ BÁN — hoàn trả ${fmtInt(o.qty)} ${o.code} @ giá vốn ${o.costBasis.toFixed(2)}`, true);
+    }
+
+    pendingOrders.splice(idx, 1);
+    renderPendingOrders();
+    updateAccountInfo();
+  }
+
+  /* ================= MUA/BÁN NGAY TẠI GIÁ THỊ TRƯỜNG ================= */
+  function buyMarket() {
+    const o = readMarketOrder();
+    if (!o) return;
+
+    const price = stocks[o.code].price;
+    const cost  = o.qty * price * 1000;
+    if (cost > balance) { showToast('Không đủ tiền để mua!'); return; }
+
+    balance -= cost;
+    addToPortfolio(o.code, o.qty, price);
+    logTrade('MUA', o.code, o.qty, price);
+    showToast(`Khớp MUA MP ${fmtInt(o.qty)} ${o.code} @ ${price.toFixed(2)}`, true);
+    updateAccountInfo();
+  }
+
+  function sellMarket() {
+    const o = readMarketOrder();
+    if (!o) return;
+
+    const held = portfolio[o.code];
+    if (!held || held.qty < o.qty) { showToast('Không đủ cổ phiếu để bán!'); return; }
+
+    const price = stocks[o.code].price;
+    balance += o.qty * price * 1000;
+    held.qty -= o.qty;
+    if (held.qty === 0) delete portfolio[o.code];
+    logTrade('BÁN', o.code, o.qty, price);
+    showToast(`Khớp BÁN MP ${fmtInt(o.qty)} ${o.code} @ ${price.toFixed(2)}`, true);
+    updateAccountInfo();
+  }
+
+  /* ================= KHỚP LỆNH CHỜ ================= */
+  function checkPendingOrders() {
+    if (!pendingOrders.length) return;
+    let changed = false;
+
+    for (let i = pendingOrders.length - 1; i >= 0; i--) {
+      const o     = pendingOrders[i];
+      const price = stocks[o.code].price;
+
+      let matched = false;
+      if (o.type === 'MUA' && price <= o.price) matched = true;
+      if (o.type === 'BÁN' && price >= o.price) matched = true;
+      if (!matched) continue;
+
+      const execPrice = o.price;   // khớp đúng tại giá đã đặt
+
+      if (o.type === 'MUA') {
+        // Tiền đã phong tỏa -> chỉ cần cộng cổ phiếu vào danh mục
+        addToPortfolio(o.code, o.qty, execPrice);
+        logTrade('MUA', o.code, o.qty, execPrice);
+        showToast(`Lệnh chờ khớp: MUA ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)}`, true);
+      } else {
+        // Cổ phiếu đã bị trừ khi đặt lệnh -> chỉ cần cộng tiền
+        balance += o.qty * execPrice * 1000;
+        logTrade('BÁN', o.code, o.qty, execPrice);
+        showToast(`Lệnh chờ khớp: BÁN ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)}`, true);
+      }
+
+      pendingOrders.splice(i, 1);
+      changed = true;
+    }
+
+    if (changed) renderPendingOrders();
+  }
+
+  /* ================= CANVAS ================= */
+  function prepare(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+
+  function drawGrid(ctx, P, pw, ph, lo, hi, yOf) {
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#1f1f1f';
+    for (let k = 0; k <= 5; k++) {
+      const v = lo + (hi - lo) * k / 5;
+      const y = Math.round(yOf(v)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l + pw, y); ctx.stroke();
+      ctx.fillStyle = '#666';
+      ctx.fillText(v.toFixed(2), P.l - 6, y);
+    }
+  }
+
+  function drawXLabels(ctx, P, pw, ph, n, xOf, step) {
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#555';
+    for (let i = 0; i < n; i += step) {
+      const x = Math.round(xOf(i)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, P.t); ctx.lineTo(x, P.t + ph); ctx.stroke();
+      ctx.fillText('#' + i, x, P.t + ph + 4);
+    }
+  }
+
+  function drawLineChart() {
+    const { ctx, w, h } = prepare(lineCanvas);
+    const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b;
+    if (pw <= 2 || ph <= 2) return;
+
+    const s = stocks[selectedStock];
+    const hist = s.history, n = hist.length;
+    let lo = Infinity, hi = -Infinity;
+    for (const v of hist) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (hi - lo < 0.001) { hi = lo + 1; lo -= 1; }
+    const padY = (hi - lo) * 0.12;
+    hi += padY; lo -= padY;
+
+    const xOf = i => PAD.l + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
+    const yOf = v => PAD.t + ((hi - v) / (hi - lo)) * ph;
+
+    drawGrid(ctx, PAD, pw, ph, lo, hi, yOf);
+    drawXLabels(ctx, PAD, pw, ph, n, xOf, 10);
+
+    const curr = hist[n - 1];
+    const color = curr > s.ref ? C.green : curr < s.ref ? C.red : C.yellow;
+
+    ctx.beginPath();
+    ctx.moveTo(xOf(0), yOf(hist[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(xOf(i), yOf(hist[i]));
+    ctx.lineTo(xOf(n - 1), PAD.t + ph);
+    ctx.lineTo(xOf(0), PAD.t + ph);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, PAD.t, 0, PAD.t + ph);
+    grad.addColorStop(0, hexA(color, 0.22));
+    grad.addColorStop(1, hexA(color, 0));
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = xOf(i), y = yOf(hist[i]);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+    if (hoverLine.idx !== null) {
+      const i = Math.max(0, Math.min(n - 1, hoverLine.idx));
+      const v = hist[i], x = xOf(i), y = yOf(v);
+      ctx.save();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + pw, y); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawCandleChart() {
+    const { ctx, w, h } = prepare(candleCanvas);
+    const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b;
+    if (pw <= 2 || ph <= 2) return;
+
+    const s = stocks[selectedStock];
+    const cs = s.candles, n = cs.length;
+    let lo = Infinity, hi = -Infinity;
+    for (const c of cs) { if (c[2] < lo) lo = c[2]; if (c[1] > hi) hi = c[1]; }
+    if (hi - lo < 0.001) { hi = lo + 1; lo -= 1; }
+    const padY = (hi - lo) * 0.12;
+    hi += padY; lo -= padY;
+
+    const slot = pw / n;
+    const cw = Math.max(1, slot * 0.62);
+    const xOf = i => PAD.l + slot * i + slot / 2;
+    const yOf = v => PAD.t + ((hi - v) / (hi - lo)) * ph;
+
+    drawGrid(ctx, PAD, pw, ph, lo, hi, yOf);
+    drawXLabels(ctx, PAD, pw, ph, n, xOf, 10);
+
+    for (let i = 0; i < n; i++) {
+      const [o, hh, ll, c] = cs[i];
+      const col = c >= o ? C.green : C.red;
+      const x = Math.round(xOf(i)) + 0.5;
+      ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, yOf(hh)); ctx.lineTo(x, yOf(ll)); ctx.stroke();
+      const yTop = yOf(Math.max(o, c));
+      const yBot = yOf(Math.min(o, c));
+      ctx.fillStyle = col;
+      ctx.fillRect(x - cw / 2, yTop, cw, Math.max(1, yBot - yTop));
+    }
+
+    if (hoverCandle.idx !== null) {
+      const i = Math.max(0, Math.min(n - 1, hoverCandle.idx));
+      const closeP = cs[i][3], x = xOf(i), y = yOf(closeP);
+      ctx.save();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + pw, y); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = cs[i][3] >= cs[i][0] ? C.green : C.red;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /* ================= TOOLTIP ================= */
+  function hideTip(el) { el.style.display = 'none'; }
+  function placeTip(el, x, y, rect) {
+    el.style.display = 'block';
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let left = x + 14, top = y + 14;
+    if (left + tw > rect.width  - 4) left = x - tw - 14;
+    if (top  + th > rect.height - 4) top  = y - th - 14;
+    if (left < 0) left = 0;
+    if (top  < 0) top  = 0;
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  }
+
+  /* ================= HOVER ================= */
+  lineCanvas.addEventListener('mousemove', e => {
+    const rect = lineCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const pw = rect.width - PAD.l - PAD.r, ph = rect.height - PAD.t - PAD.b;
+    const n = stocks[selectedStock].history.length;
+    const inside = x >= PAD.l && x <= PAD.l + pw && y >= PAD.t && y <= PAD.t + ph;
+    if (!inside) {
+      hoverLine.idx = null; hideTip(tipLine); drawLineChart(); return;
+    }
+    const raw = Math.round(((x - PAD.l) / pw) * (n - 1));
+    const idx = Math.max(0, Math.min(n - 1, raw));
+    const val = stocks[selectedStock].history[idx];
+    hoverLine.idx = idx;
+    tipLine.style.color = '#00e676';
+    tipLine.innerHTML = `<b>${selectedStock}</b><br>Điểm: #${idx}<br>Giá: <b>${val.toFixed(2)}</b>`;
+    placeTip(tipLine, x, y, rect);
+    drawLineChart();
+  });
+  lineCanvas.addEventListener('mouseleave', () => {
+    hoverLine.idx = null; hideTip(tipLine); drawLineChart();
+  });
+
+  candleCanvas.addEventListener('mousemove', e => {
+    const rect = candleCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const pw = rect.width - PAD.l - PAD.r, ph = rect.height - PAD.t - PAD.b;
+    const cs = stocks[selectedStock].candles, n = cs.length;
+    const slot = pw / n;
+    const inside = x >= PAD.l && x <= PAD.l + pw && y >= PAD.t && y <= PAD.t + ph;
+    const idx = Math.floor((x - PAD.l) / slot);
+    if (!inside || idx < 0 || idx >= n) {
+      hoverCandle.idx = null; hideTip(tipCandle); drawCandleChart(); return;
+    }
+    const c = cs[idx];
+    hoverCandle.idx = idx;
+    tipCandle.style.color = '#ffb74d';
+    tipCandle.innerHTML =
+      `<b>${selectedStock}</b> Nến #${idx}<br>` +
+      `Mở: ${c[0].toFixed(2)} | Cao: ${c[1].toFixed(2)}<br>` +
+      `Thấp: ${c[2].toFixed(2)} | Đóng: <b>${c[3].toFixed(2)}</b>`;
+    placeTip(tipCandle, x, y, rect);
+    drawCandleChart();
+  });
+  candleCanvas.addEventListener('mouseleave', () => {
+    hoverCandle.idx = null; hideTip(tipCandle); drawCandleChart();
+  });
+
+  /* ================= SỰ KIỆN ================= */
+  $('#btnBuy').addEventListener('click', buyStock);
+  $('#btnSell').addEventListener('click', sellStock);
+  $('#btnBuyMP').addEventListener('click', buyMarket);
+  $('#btnSellMP').addEventListener('click', sellMarket);
+
+  // Nút HỦY trong bảng lệnh chờ (event delegation)
+  pendingTbody.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-cancel-id]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.cancelId, 10);
+    cancelPendingOrder(id);
+  });
+
+  window.addEventListener('resize', () => {
+    drawLineChart();
+    drawCandleChart();
+  });
+
+  /* ================= KHỞI ĐỘNG ================= */
+  function boot() {
+    initTable();
+    renderTable();
+    updateAccountInfo();
+    renderPendingOrders();
+    drawLineChart();
+    drawCandleChart();
+    setInterval(updateMarket, 300);
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    requestAnimationFrame(boot);
+  } else {
+    window.addEventListener('DOMContentLoaded', () => requestAnimationFrame(boot));
+  }
+})();
+</script>
+</body>
+</html>
