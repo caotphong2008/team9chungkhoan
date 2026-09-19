@@ -35,8 +35,29 @@
     flex-direction:row;justify-content:space-between;align-items:center;
     padding:0 10px 7px;gap:12px;flex-wrap:wrap;
   }
+  .acc-left{display:flex;flex-direction:column;gap:2px}
+  .acc-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   #lblBalance{font-size:12px}
   #lblPnl{font-size:12px;font-weight:bold}
+  #lblSession{font-size:10.5px;color:#888}
+
+  .badge{
+    background:linear-gradient(135deg,#ffd600,#ff8f00);
+    color:#000;font-weight:bold;padding:3px 10px;border-radius:12px;
+    font-size:11px;letter-spacing:.3px;box-shadow:0 0 12px rgba(255,214,0,.5);
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{transform:scale(1);box-shadow:0 0 12px rgba(255,214,0,.5)}
+    50%{transform:scale(1.04);box-shadow:0 0 20px rgba(255,214,0,.85)}
+  }
+
+  #btnReset{
+    background:#3a1a1a;color:#ff8a80;font-size:10.5px;
+    padding:4px 10px;border:1px solid #5a2a2a;border-radius:3px;
+    cursor:pointer;font-weight:bold;font-family:inherit;
+  }
+  #btnReset:hover{background:#5a2a2a;color:#fff}
 
   .center{
     display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
@@ -130,8 +151,15 @@
   <section class="group">
     <div class="group-title">THÔNG TIN TÀI KHOẢN &amp; DÒNG TIỀN</div>
     <div class="group-body acc-body">
-      <span id="lblBalance"></span>
-      <span id="lblPnl"></span>
+      <div class="acc-left">
+        <span id="lblBalance"></span>
+        <span id="lblPnl"></span>
+        <span id="lblSession">Đang khởi tạo phiên…</span>
+      </div>
+      <div class="acc-right">
+        <span id="lblAchievement" class="badge" style="display:none">🏆 ĐẠT MỤC TIÊU ≥ 15%</span>
+        <button id="btnReset" title="Xóa toàn bộ dữ liệu và bắt đầu lại">RESET</button>
+      </div>
     </div>
   </section>
 
@@ -179,15 +207,15 @@
 
     <div class="left-col">
       <div class="group">
-        <div class="group-title">ĐẶT LỆNH (MUA/BÁN = lệnh chờ khớp — MP = khớp ngay)</div>
+        <div class="group-title">ĐẶT LỆNH (MUA/BÁN = CHỜ KHỚP — MP = KHỚP NGAY)</div>
         <div class="group-body trade-body">
           <label>Mã:</label><input id="inputCode" value="SSI">
           <label>KL:</label><input id="inputQty" value="1000">
           <label>Giá:</label><input id="inputPrice" value="35.0">
-          <button class="btn-buy" id="btnBuy" title="Đặt lệnh chờ MUA tại giá bạn nhập">MUA</button>
-          <button class="btn-sell" id="btnSell" title="Đặt lệnh chờ BÁN tại giá bạn nhập">BÁN</button>
-          <button class="btn-buy-mp" id="btnBuyMP" title="Mua khớp ngay tại giá thị trường">MUA MP</button>
-          <button class="btn-sell-mp" id="btnSellMP" title="Bán khớp ngay tại giá thị trường">BÁN MP</button>
+          <button class="btn-buy"  id="btnBuy"    title="Đặt lệnh CHỜ MUA tại giá bạn muốn — khớp khi thị trường chạm giá đó">MUA</button>
+          <button class="btn-sell" id="btnSell"   title="Đặt lệnh CHỜ BÁN tại giá bạn muốn — khớp khi thị trường chạm giá đó">BÁN</button>
+          <button class="btn-buy-mp"  id="btnBuyMP"  title="Mua khớp NGAY tại giá thị trường">MUA MP</button>
+          <button class="btn-sell-mp" id="btnSellMP" title="Bán khớp NGAY tại giá thị trường">BÁN MP</button>
         </div>
       </div>
 
@@ -247,6 +275,10 @@
   'use strict';
 
   const INITIAL_BALANCE = 10000000;
+  const ACHIEVEMENT_THRESHOLD = 15;
+  const STORAGE_KEY = 'ssfzti_state_v1';
+  const SAVE_INTERVAL_MS = 1500;
+
   const C = { green: '#00e676', red: '#ff5252', yellow: '#ffd600' };
   const PAD = { l: 56, r: 14, t: 12, b: 22 };
 
@@ -285,20 +317,23 @@
 
   let balance         = INITIAL_BALANCE;
   const portfolio     = {};
-  // Pending order structure:
-  //   MUA: { id, type:'MUA', code, qty, price, reserved (VNĐ đã phong tỏa), time }
-  //   BÁN: { id, type:'BÁN', code, qty, price, costBasis (giá vốn gốc), time }
   const pendingOrders = [];
   let nextOrderId     = 1;
   let selectedStock   = 'SSI';
 
+  let stateStartedAt = Date.now();
+  let refreshCount   = 1;
+
   /* ================= DOM ================= */
   const $ = s => document.querySelector(s);
 
-  const lblBalance  = $('#lblBalance');
-  const lblPnl      = $('#lblPnl');
-  const titleLine   = $('#titleLine');
-  const titleCandle = $('#titleCandle');
+  const lblBalance     = $('#lblBalance');
+  const lblPnl         = $('#lblPnl');
+  const lblSession     = $('#lblSession');
+  const lblAchievement = $('#lblAchievement');
+  const btnReset       = $('#btnReset');
+  const titleLine      = $('#titleLine');
+  const titleCandle    = $('#titleCandle');
 
   const inputCode   = $('#inputCode');
   const inputQty    = $('#inputQty');
@@ -320,6 +355,133 @@
   const hoverLine   = { idx: null };
   const hoverCandle = { idx: null };
 
+  /* ================= LƯU / NẠP ================= */
+  function collectState() {
+    return {
+      version: 2,                                    // tăng version do đổi logic lệnh chờ
+      initialBalance: INITIAL_BALANCE,
+      balance,
+      portfolio,
+      pendingOrders,
+      nextOrderId,
+      stateStartedAt,
+      refreshCount,
+      savedAt: Date.now(),
+      stocks: codes.map(c => ({
+        code: c,
+        price: stocks[c].price,
+        vol:   stocks[c].vol,
+        history: stocks[c].history.slice(-60),
+        candles: stocks[c].candles.slice(-60)
+      }))
+    };
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); }
+    catch (e) { console.warn('Không thể lưu trạng thái:', e); }
+  }
+
+  function loadState() {
+    let raw;
+    try { raw = localStorage.getItem(STORAGE_KEY); }
+    catch (e) { return false; }
+    if (!raw) return false;
+
+    let s;
+    try { s = JSON.parse(raw); }
+    catch (e) {
+      showToast('Dữ liệu lưu bị hỏng — bắt đầu phiên mới.', false);
+      localStorage.removeItem(STORAGE_KEY);
+      return false;
+    }
+
+    // Version cũ (1) không tương thích với logic mới → bỏ
+    if (!s || s.version !== 2 || s.initialBalance !== INITIAL_BALANCE) {
+      showToast('Dữ liệu lưu đã bị can thiệp hoặc quá cũ — bắt đầu phiên mới.', false);
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      return false;
+    }
+    if (typeof s.balance !== 'number' || s.balance < 0 || !isFinite(s.balance)) {
+      showToast('⚠ Số dư bất thường — từ chối nạp!', false);
+      return false;
+    }
+
+    balance = s.balance;
+
+    for (const k in portfolio) delete portfolio[k];
+    if (s.portfolio && typeof s.portfolio === 'object') {
+      for (const k in s.portfolio) {
+        const v = s.portfolio[k];
+        if (!v || typeof v.qty !== 'number' || typeof v.avg_price !== 'number') continue;
+        if (!stocks[k]) continue;
+        if (v.qty <= 0 || v.avg_price <= 0) continue;
+        portfolio[k] = { qty: v.qty, avg_price: v.avg_price };
+      }
+    }
+
+    pendingOrders.length = 0;
+    if (Array.isArray(s.pendingOrders)) {
+      s.pendingOrders.forEach(o => {
+        if (!o || !stocks[o.code]) return;
+        if (o.type !== 'MUA' && o.type !== 'BÁN') return;
+        if (typeof o.qty !== 'number' || typeof o.price !== 'number') return;
+        if (o.qty <= 0 || o.price <= 0) return;
+        if (o.type === 'MUA' && typeof o.reserved !== 'number') {
+          o.reserved = o.qty * o.price * 1000;
+        }
+        if (o.type === 'BÁN' && typeof o.costBasis !== 'number') {
+          o.costBasis = o.price;
+        }
+        // lastMarket phải có; nếu thiếu, khởi tạo bằng giá thị trường hiện tại
+        if (typeof o.lastMarket !== 'number') {
+          o.lastMarket = stocks[o.code].price;
+        }
+        pendingOrders.push(o);
+      });
+    }
+
+    nextOrderId = (typeof s.nextOrderId === 'number' && s.nextOrderId > 0)
+      ? s.nextOrderId : 1;
+
+    if (Array.isArray(s.stocks)) {
+      s.stocks.forEach(ss => {
+        const st = stocks[ss.code];
+        if (!st) return;
+        if (typeof ss.price === 'number' && ss.price > 0) st.price = ss.price;
+        if (typeof ss.vol === 'number') st.vol = ss.vol;
+        if (Array.isArray(ss.history) && ss.history.length) {
+          st.history = ss.history.slice(-60);
+          while (st.history.length < 60) st.history.unshift(st.history[0]);
+        }
+        if (Array.isArray(ss.candles) && ss.candles.length) {
+          st.candles = ss.candles.slice(-60);
+          while (st.candles.length < 60) st.candles.unshift(st.candles[0]);
+        }
+      });
+    }
+
+    stateStartedAt = (typeof s.stateStartedAt === 'number' && s.stateStartedAt > 0)
+      ? s.stateStartedAt : Date.now();
+    refreshCount = (typeof s.refreshCount === 'number' && s.refreshCount > 0)
+      ? s.refreshCount + 1 : 1;
+
+    return true;
+  }
+
+  function resetAccount() {
+    const ok = confirm(
+      '⚠ BẠN CÓ CHẮC CHẮN MUỐN RESET?\n\n' +
+      '• Toàn bộ số dư, danh mục, lệnh chờ và lịch sử sẽ bị xóa.\n' +
+      '• Phiên chơi sẽ bắt đầu lại từ #1.\n' +
+      '• Hành động này KHÔNG THỂ hoàn tác.\n\n' +
+      'Nhấn OK để xác nhận xóa.'
+    );
+    if (!ok) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    location.reload();
+  }
+
   /* ================= TOAST ================= */
   let toastTimer = null;
   function showToast(msg, ok) {
@@ -327,7 +489,7 @@
     toastEl.classList.toggle('ok', !!ok);
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
   }
 
   /* ================= HELPERS ================= */
@@ -345,7 +507,6 @@
   }
 
   function reservedSharesValue() {
-    // Giá trị cổ phiếu đang bị giữ cho các lệnh chờ BÁN (vẫn thuộc tài khoản)
     let v = 0;
     for (const o of pendingOrders) {
       if (o.type === 'BÁN') v += o.qty * stocks[o.code].price * 1000;
@@ -449,7 +610,6 @@
     for (const code in portfolio) {
       stockVal += portfolio[code].qty * stocks[code].price * 1000;
     }
-    // Cổ phiếu đang bị giữ cho lệnh chờ BÁN vẫn thuộc tài khoản
     stockVal += reservedSharesValue();
 
     const reserved = totalReservedMoney();
@@ -467,7 +627,14 @@
       `Lời / Lỗ: ${sign}${fmtInt(pnl)} VNĐ (${sign}${pnlPct.toFixed(2)}%)`;
     lblPnl.style.color = pnl >= 0 ? C.green : C.red;
 
-    // ---- Portfolio table ----
+    if (pnlPct >= ACHIEVEMENT_THRESHOLD) {
+      lblAchievement.style.display = 'inline-block';
+      lblAchievement.textContent =
+        `🏆 ĐẠT MỤC TIÊU ≥ ${ACHIEVEMENT_THRESHOLD}%  (${sign}${pnlPct.toFixed(2)}%)`;
+    } else {
+      lblAchievement.style.display = 'none';
+    }
+
     portfolioTbody.innerHTML = '';
     for (const code in portfolio) {
       const info = portfolio[code];
@@ -486,6 +653,19 @@
         `<td style="color:${pColor};font-weight:bold">${pSign}${fmtInt(p)}<br><span style="font-size:10px">(${pSign}${pPct.toFixed(2)}%)</span></td>`;
       portfolioTbody.appendChild(tr);
     }
+  }
+
+  function updateSessionInfo() {
+    const elapsed = Date.now() - stateStartedAt;
+    const h = Math.floor(elapsed / 3600000);
+    const m = Math.floor((elapsed % 3600000) / 60000);
+    const s = Math.floor((elapsed % 60000) / 1000);
+    const startStr = new Date(stateStartedAt).toLocaleString('vi-VN', {
+      hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+    });
+    const pad = n => String(n).padStart(2, '0');
+    lblSession.textContent =
+      `Phiên #${refreshCount} · Đã chơi ${h}h ${pad(m)}m ${pad(s)}s · Bắt đầu ${startStr}`;
   }
 
   /* ================= LỊCH SỬ ================= */
@@ -526,13 +706,16 @@
     pendingTbody.innerHTML = '';
     pendingOrders.forEach(o => {
       const color = o.type === 'MUA' ? '#81c784' : '#ef9a9a';
+      const mkt = stocks[o.code].price;
+      const diff = Math.abs(mkt - o.price).toFixed(2);
 
-      // Cột "Thông Tin": MUA -> số tiền đã phong tỏa; BÁN -> giá vốn
       let info;
       if (o.type === 'MUA') {
-        info = `<span style="color:#ffb74d">Tiền: ${fmtInt(o.reserved)}</span>`;
+        info = `<span style="color:#ffb74d">Tiền: ${fmtInt(o.reserved)}</span>` +
+               `<br><span style="font-size:10px;color:#888">Cách ${diff}</span>`;
       } else {
-        info = `<span style="color:#ffd600">Giá mua: ${o.costBasis.toFixed(2)}</span>`;
+        info = `<span style="color:#ffd600">Giá mua: ${o.costBasis.toFixed(2)}</span>` +
+               `<br><span style="font-size:10px;color:#888">Cách ${diff}</span>`;
       }
 
       const tr = document.createElement('tr');
@@ -557,7 +740,7 @@
     if (!Number.isFinite(qty) || qty <= 0) { showToast('Khối lượng không hợp lệ!'); return null; }
     if (!Number.isFinite(price) || price <= 0) { showToast('Giá không hợp lệ!'); return null; }
     if (price < stocks[code].floor || price > stocks[code].ceil) {
-      showToast(`Giá phải nằm trong [Sàn ${stocks[code].floor.toFixed(2)} - Trần ${stocks[code].ceil.toFixed(2)}]`);
+      showToast(`Giá phải nằm trong [Sàn ${stocks[code].floor.toFixed(2)} – Trần ${stocks[code].ceil.toFixed(2)}]`);
       return null;
     }
     return { code, qty, price };
@@ -571,12 +754,16 @@
     return { code, qty };
   }
 
-  /* ================= MUA (LỆNH CHỜ) ================= */
+  /* =========================================================
+     MUA — LUÔN tạo lệnh chờ khớp
+     - Bạn nhập giá nào cũng được (miễn trong [Sàn, Trần]).
+     - Lệnh nằm trong sổ cho tới khi giá thị trường BĂNG QUA giá đặt.
+     - Không bao giờ khớp ngay khi vừa đặt.
+     ========================================================= */
   function buyStock() {
     const o = readOrder();
     if (!o) return;
 
-    // Lệnh MUA luôn là lệnh chờ khớp theo đúng giá đã nhập
     const reserve = o.qty * o.price * 1000;
     if (reserve > balance) { showToast('Không đủ tiền để đặt lệnh!'); return; }
 
@@ -588,16 +775,24 @@
       qty: o.qty,
       price: o.price,
       reserved: reserve,
+      lastMarket: stocks[o.code].price,    // điểm mốc để phát hiện giá băng qua
       time: new Date().toTimeString().slice(0, 8)
     });
 
     logTrade('CHỜ MUA', o.code, o.qty, o.price);
-    showToast(`Đã đặt lệnh CHỜ MUA ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — phong tỏa ${fmtInt(reserve)} VNĐ`, true);
+    showToast(
+      `Đã đặt lệnh CHỜ MUA ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — ` +
+      `phong tỏa ${fmtInt(reserve)} VNĐ. Lệnh sẽ khớp khi thị trường chạm mức giá này.`,
+      true
+    );
     renderPendingOrders();
+    saveState();
     updateAccountInfo();
   }
 
-  /* ================= BÁN (LỆNH CHỜ) ================= */
+  /* =========================================================
+     BÁN — LUÔN tạo lệnh chờ khớp
+     ========================================================= */
   function sellStock() {
     const o = readOrder();
     if (!o) return;
@@ -605,7 +800,7 @@
     const held = portfolio[o.code];
     if (!held || held.qty < o.qty) { showToast('Không đủ cổ phiếu để đặt lệnh!'); return; }
 
-    const costBasis = held.avg_price;   // lưu lại giá vốn để hoàn trả nếu hủy
+    const costBasis = held.avg_price;
 
     // Trừ cổ phiếu ngay khỏi danh mục (đã bị giữ cho lệnh chờ bán)
     held.qty -= o.qty;
@@ -618,12 +813,19 @@
       qty: o.qty,
       price: o.price,
       costBasis: costBasis,
+      lastMarket: stocks[o.code].price,
       time: new Date().toTimeString().slice(0, 8)
     });
 
     logTrade('CHỜ BÁN', o.code, o.qty, o.price);
-    showToast(`Đã đặt lệnh CHỜ BÁN ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — giữ ${fmtInt(o.qty)} CP (giá vốn ${costBasis.toFixed(2)})`, true);
+    showToast(
+      `Đã đặt lệnh CHỜ BÁN ${fmtInt(o.qty)} ${o.code} @ ${o.price.toFixed(2)} — ` +
+      `giữ ${fmtInt(o.qty)} CP (giá vốn ${costBasis.toFixed(2)}). ` +
+      `Lệnh sẽ khớp khi thị trường chạm mức giá này.`,
+      true
+    );
     renderPendingOrders();
+    saveState();
     updateAccountInfo();
   }
 
@@ -634,12 +836,10 @@
     const o = pendingOrders[idx];
 
     if (o.type === 'MUA') {
-      // Hoàn tiền phong tỏa
       balance += o.reserved;
       logTrade('HỦY MUA', o.code, o.qty, o.price);
       showToast(`Đã hủy lệnh CHỜ MUA — hoàn trả ${fmtInt(o.reserved)} VNĐ`, true);
     } else {
-      // Hoàn trả cổ phiếu theo đúng giá vốn ban đầu
       addToPortfolio(o.code, o.qty, o.costBasis);
       logTrade('HỦY BÁN', o.code, o.qty, o.price);
       showToast(`Đã hủy lệnh CHỜ BÁN — hoàn trả ${fmtInt(o.qty)} ${o.code} @ giá vốn ${o.costBasis.toFixed(2)}`, true);
@@ -647,6 +847,7 @@
 
     pendingOrders.splice(idx, 1);
     renderPendingOrders();
+    saveState();
     updateAccountInfo();
   }
 
@@ -663,6 +864,7 @@
     addToPortfolio(o.code, o.qty, price);
     logTrade('MUA', o.code, o.qty, price);
     showToast(`Khớp MUA MP ${fmtInt(o.qty)} ${o.code} @ ${price.toFixed(2)}`, true);
+    saveState();
     updateAccountInfo();
   }
 
@@ -679,42 +881,77 @@
     if (held.qty === 0) delete portfolio[o.code];
     logTrade('BÁN', o.code, o.qty, price);
     showToast(`Khớp BÁN MP ${fmtInt(o.qty)} ${o.code} @ ${price.toFixed(2)}`, true);
+    saveState();
     updateAccountInfo();
   }
 
-  /* ================= KHỚP LỆNH CHỜ ================= */
+  /* =========================================================
+     KHỚP LỆNH CHỜ — LOGIC "BĂNG QUA" (crossing detection)
+     
+     Lệnh khớp khi giá thị trường BĂNG QUA mức giá đặt giữa hai lần
+     kiểm tra liên tiếp:
+       • Từ TRÊN xuống: prev > P  và  cur <= P   → khớp
+       • Từ DƯỚI lên:   prev < P  và  cur >= P   → khớp
+     
+     Áp dụng cho CẢ lệnh MUA lẫn lệnh BÁN.
+     Nhờ vậy:
+       - Đặt MUA 35 khi thị trường 32 → chờ tới khi giá lên chạm 35.
+       - Đặt MUA 30 khi thị trường 32 → chờ tới khi giá xuống chạm 30.
+       - Đặt BÁN 35 khi thị trường 32 → chờ tới khi giá lên chạm 35.
+       - Đặt BÁN 30 khi thị trường 32 → chờ tới khi giá xuống chạm 30.
+     Lệnh KHÔNG BAO GIỜ khớp ngay khi vừa đặt.
+     ========================================================= */
   function checkPendingOrders() {
     if (!pendingOrders.length) return;
     let changed = false;
 
     for (let i = pendingOrders.length - 1; i >= 0; i--) {
-      const o     = pendingOrders[i];
-      const price = stocks[o.code].price;
+      const o = pendingOrders[i];
+      const marketPrice = stocks[o.code].price;
+
+      const prev = o.lastMarket;
+      const P = o.price;
 
       let matched = false;
-      if (o.type === 'MUA' && price <= o.price) matched = true;
-      if (o.type === 'BÁN' && price >= o.price) matched = true;
+      if (typeof prev === 'number') {
+        const crossDown = prev > P && marketPrice <= P;
+        const crossUp   = prev < P && marketPrice >= P;
+        if (crossDown || crossUp) matched = true;
+      }
+
+      // Luôn cập nhật mốc so sánh cho lần kiểm tra sau
+      o.lastMarket = marketPrice;
+
       if (!matched) continue;
 
-      const execPrice = o.price;   // khớp đúng tại giá đã đặt
+      const execPrice = marketPrice;
 
       if (o.type === 'MUA') {
-        // Tiền đã phong tỏa -> chỉ cần cộng cổ phiếu vào danh mục
         addToPortfolio(o.code, o.qty, execPrice);
         logTrade('MUA', o.code, o.qty, execPrice);
-        showToast(`Lệnh chờ khớp: MUA ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)}`, true);
+        showToast(
+          `Lệnh chờ khớp: MUA ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)} ` +
+          `(giá đặt ${P.toFixed(2)})`,
+          true
+        );
       } else {
-        // Cổ phiếu đã bị trừ khi đặt lệnh -> chỉ cần cộng tiền
         balance += o.qty * execPrice * 1000;
         logTrade('BÁN', o.code, o.qty, execPrice);
-        showToast(`Lệnh chờ khớp: BÁN ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)}`, true);
+        showToast(
+          `Lệnh chờ khớp: BÁN ${fmtInt(o.qty)} ${o.code} @ ${execPrice.toFixed(2)} ` +
+          `(giá đặt ${P.toFixed(2)})`,
+          true
+        );
       }
 
       pendingOrders.splice(i, 1);
       changed = true;
     }
 
-    if (changed) renderPendingOrders();
+    if (changed) {
+      renderPendingOrders();
+      saveState();
+    }
   }
 
   /* ================= CANVAS ================= */
@@ -924,8 +1161,8 @@
   $('#btnSell').addEventListener('click', sellStock);
   $('#btnBuyMP').addEventListener('click', buyMarket);
   $('#btnSellMP').addEventListener('click', sellMarket);
+  btnReset.addEventListener('click', resetAccount);
 
-  // Nút HỦY trong bảng lệnh chờ (event delegation)
   pendingTbody.addEventListener('click', e => {
     const btn = e.target.closest('button[data-cancel-id]');
     if (!btn) return;
@@ -938,15 +1175,31 @@
     drawCandleChart();
   });
 
+  window.addEventListener('beforeunload', saveState);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveState();
+  });
+
   /* ================= KHỞI ĐỘNG ================= */
   function boot() {
+    const loaded = loadState();
     initTable();
     renderTable();
     updateAccountInfo();
     renderPendingOrders();
     drawLineChart();
     drawCandleChart();
+    updateSessionInfo();
+
     setInterval(updateMarket, 300);
+    setInterval(updateSessionInfo, 1000);
+    setInterval(saveState, SAVE_INTERVAL_MS);
+
+    if (loaded) {
+      showToast(`Đã khôi phục phiên #${refreshCount} — tiếp tục từ trạng thái trước đó.`, true);
+    } else {
+      showToast('Bắt đầu phiên giao dịch mới.', true);
+    }
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
